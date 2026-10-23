@@ -69,7 +69,7 @@ The files are single-sheet workbooks made from `tests/issue_666_panic.xlsb`, wit
 2. 6 zero bytes, or
 3. `hsState=0`, `iTabID=0`, `strRelID="rId1"` and nothing after it.
 
-The three files are added as test fixtures in the linked PR (`tests/xlsb_bundle_sheet_*.xlsb`).
+The three files will be added as test fixtures (`tests/xlsb_bundle_sheet_*.xlsb`) in a PR.
 
 ### Environment
 
