@@ -3015,6 +3015,23 @@ fn test_xlsb_case_insensitive_part_name() {
     range_eq!(range, expected_range);
 }
 
+// A BrtCellIsst cell whose index is beyond the shared strings table should be
+// reported as an error rather than panic. The fixture has a single such cell
+// and no `xl/sharedStrings.bin` part, so the table is empty.
+#[test]
+fn test_xlsb_shared_string_index_out_of_range() {
+    let mut xlsb: Xlsb<_> = wb("xlsb_missing_shared_string.xlsb");
+
+    match xlsb.worksheet_range("Sheet1") {
+        Err(calamine::XlsbError::Unrecognized { typ, val }) => {
+            assert_eq!(typ, "BrtCellIsst:isst");
+            assert_eq!(val, "0");
+        }
+        Err(e) => panic!("unexpected error: {e}"),
+        Ok(_) => panic!("expected an error for an out of range shared string index"),
+    }
+}
+
 // Test for issue #530 where the part names in the xlsx file use a Windows-style
 // backslash. For example "xl\_rels\workbook.xml.rels" instead of
 // "xl/_rels/workbook.xml.rels".

@@ -141,7 +141,13 @@ where
                 0x0007 => {
                     // BrtCellIsst
                     let isst = read_usize(&self.buf[8..12]);
-                    DataRef::SharedString(&self.strings[isst])
+                    let Some(s) = self.strings.get(isst) else {
+                        return Err(XlsbError::Unrecognized {
+                            typ: "BrtCellIsst:isst",
+                            val: isst.to_string(),
+                        });
+                    };
+                    DataRef::SharedString(s)
                 }
                 0x0000 => {
                     // BrtRowHdr
