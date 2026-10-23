@@ -303,13 +303,19 @@ impl<RS: Read + Seek> Xlsb<RS> {
                 0x009C => {
                     // BrtBundleSh
                     let len = iter.fill_buffer(&mut buf)?;
-                    let rel_len = read_u32(&buf[8..len]);
-                    if rel_len != 0xFFFF_FFFF {
-                        let rel_len = rel_len as usize * 2;
-                        let relid = &buf[12..12 + rel_len];
-                        // converts utf16le to utf8 for HashMap search
-                        let relid = UTF_16LE.decode(relid).0;
-                        let path = format!("xl/{}", relationships[&*relid]);
+                    // hsState and iTabID are followed by strRelID and strName.
+                    let strings = buf.get(8..len).unwrap_or_default();
+                    // A null strRelID has a length of 0xFFFFFFFF.
+                    if strings.get(..4) != Some(&[0xFF; 4][..]) {
+                        let mut rel_len = 0;
+                        let relid = wide_str(strings, &mut rel_len)?;
+                        let Some(target) = relationships.get(&*relid) else {
+                            return Err(XlsbError::Unrecognized {
+                                typ: "BrtBundleSh:strRelID",
+                                val: relid.into_owned(),
+                            });
+                        };
+                        let path = format!("xl/{target}");
                         // ST_SheetState
                         let visible = match read_u32(&buf) {
                             0 => SheetVisible::Visible,
@@ -333,7 +339,7 @@ impl<RS: Read + Seek> Xlsb<RS> {
                                 })
                             }
                         };
-                        let name = wide_str(&buf[12 + rel_len..len], &mut 0)?;
+                        let name = wide_str(&strings[rel_len..], &mut 0)?;
                         self.metadata.sheets.push(Sheet {
                             name: name.to_string(),
                             typ,
@@ -743,6 +749,12 @@ where
 }
 
 fn wide_str<'a>(buf: &'a [u8], str_len: &mut usize) -> Result<Cow<'a, str>, XlsbError> {
+    if buf.len() < 4 {
+        return Err(XlsbError::WideStr {
+            ws_len: 4,
+            buf_len: buf.len(),
+        });
+    }
     let len = read_u32(buf) as usize;
     if buf.len() < 4 + len * 2 {
         return Err(XlsbError::WideStr {

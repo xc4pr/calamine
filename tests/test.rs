@@ -7,7 +7,7 @@ use calamine::Data::{Bool, DateTime, DateTimeIso, DurationIso, Empty, Error, Flo
 use calamine::{
     open_workbook, open_workbook_auto, DataRef, DataType, Dimensions, ExcelDateTime,
     ExcelDateTimeType, HeaderRow, Ods, Range, Reader, ReaderRef, Sheet, SheetType, SheetVisible,
-    Xls, XlsError, Xlsb, Xlsx, XlsxFormulaMetadata,
+    Xls, XlsError, Xlsb, XlsbError, Xlsx, XlsxFormulaMetadata,
 };
 use calamine::{CellErrorType::*, Data};
 use rstest::rstest;
@@ -3747,6 +3747,38 @@ fn test_xlsb_unmatched_workbook_record_does_not_panic() {
     // desynced reader misreads as `BrtBundleSh` and decodes from an empty buffer.
     let xlsb: Xlsb<_> = wb("issue_666_panic.xlsb");
     assert_eq!(xlsb.sheet_names(), vec!["Sheet1".to_string()]);
+}
+
+// A malformed `BrtBundleSh` record in `xl/workbook.bin` should be reported as an
+// error when the workbook is opened, rather than panic.
+#[test]
+fn test_xlsb_bundle_sheet_missing_relationship() {
+    // The record names `rId2`, but `workbook.bin.rels` only defines `rId1`.
+    let path = test_path("xlsb_bundle_sheet_missing_rel.xlsb");
+    let res: Result<Xlsb<_>, _> = open_workbook(&path);
+    match res {
+        Err(XlsbError::Unrecognized { typ, val }) => {
+            assert_eq!(typ, "BrtBundleSh:strRelID");
+            assert_eq!(val, "rId2");
+        }
+        Err(e) => panic!("unexpected error: {e}"),
+        Ok(_) => panic!("expected an error for a missing sheet relationship"),
+    }
+}
+
+#[rstest]
+// The record body is 6 bytes, shorter than its fixed size fields.
+#[case("xlsb_bundle_sheet_short_record.xlsb")]
+// The record body ends after `strRelID`, without the `strName` length.
+#[case("xlsb_bundle_sheet_truncated_name.xlsb")]
+fn test_xlsb_bundle_sheet_truncated_record(#[case] test_file: &str) {
+    let path = test_path(test_file);
+    let res: Result<Xlsb<_>, _> = open_workbook(&path);
+    assert!(
+        matches!(res, Err(XlsbError::WideStr { .. })),
+        "expected a WideStr error, got: {:?}",
+        res.err()
+    );
 }
 
 #[test]
